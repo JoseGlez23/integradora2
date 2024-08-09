@@ -12,10 +12,10 @@ app.use(bodyParser.json());
 // Crear un pool de conexiones
 const pool = mysql.createPool({
   connectionLimit: 10,
-  host: "127.0.0.1",
-  user: "root",
-  password: "",
-  database: "droppingwater",
+  host: "193.203.166.112",
+  user: "u475816193_droppingWater2",
+  password: "DroppingWater22$",
+  database: "u475816193_droppingWater2",
 });
 
 pool.on("error", (err) => {
