@@ -9,19 +9,23 @@ const port = 3001;
 app.use(cors());
 app.use(bodyParser.json());
 
-const db = mysql.createConnection({
-  host: "193.203.166.112",
-  user: "u475816193_droppingWater2",
-  password: "DroppingWater22$",
-  database: "u475816193_droppingWater2",
+// Crear un pool de conexiones
+const pool = mysql.createPool({
+  connectionLimit: 10,
+  host: "127.0.0.1",
+  user: "root",
+  password: "",
+  database: "droppingwater",
 });
 
-db.connect((err) => {
-  if (err) {
-    console.error("Error connecting to the database:", err);
-    return;
-  }
-  console.log("Connected to the database");
+pool.on("error", (err) => {
+  console.error("Database error:", err);
+});
+
+// Middleware para añadir el pool a cada solicitud
+app.use((req, res, next) => {
+  req.db = pool;
+  next();
 });
 
 const requiredFieldsMap = {
@@ -90,7 +94,7 @@ Object.keys(requiredFieldsMap).forEach((entity) => {
     const placeholders = values.map(() => "?").join(", ");
     const sql = `INSERT INTO ${entity} (${columns}) VALUES (${placeholders})`;
 
-    db.query(sql, values, (err, result) => {
+    req.db.query(sql, values, (err, result) => {
       if (err) {
         console.error(`Error inserting into ${entity}:`, err);
         return res
@@ -104,7 +108,7 @@ Object.keys(requiredFieldsMap).forEach((entity) => {
   // Read all
   app.get(`/api/${entity}`, (req, res) => {
     const sql = `SELECT * FROM ${entity}`;
-    db.query(sql, (err, results) => {
+    req.db.query(sql, (err, results) => {
       if (err) {
         console.error(`Error querying ${entity} table:`, err);
         return res
@@ -119,7 +123,7 @@ Object.keys(requiredFieldsMap).forEach((entity) => {
   app.get(`/api/${entity}/id/:id`, (req, res) => {
     const { id } = req.params;
     const sql = `SELECT * FROM ${entity} WHERE id = ?`;
-    db.query(sql, [id], (err, results) => {
+    req.db.query(sql, [id], (err, results) => {
       if (err) {
         console.error(`Error querying ${entity} by id ${id}:`, err);
         return res
@@ -157,7 +161,7 @@ Object.keys(requiredFieldsMap).forEach((entity) => {
     values.push(id);
     const sql = `UPDATE ${entity} SET ${columns} WHERE id = ?`;
 
-    db.query(sql, values, (err, result) => {
+    req.db.query(sql, values, (err, result) => {
       if (err) {
         console.error(`Error updating ${entity} with id ${id}:`, err);
         return res
@@ -172,7 +176,7 @@ Object.keys(requiredFieldsMap).forEach((entity) => {
   app.delete(`/api/${entity}/id/:id`, (req, res) => {
     const { id } = req.params;
     const sql = `DELETE FROM ${entity} WHERE id = ?`;
-    db.query(sql, [id], (err, result) => {
+    req.db.query(sql, [id], (err, result) => {
       if (err) {
         console.error(`Error deleting ${entity} with id ${id}:`, err);
         return res
@@ -190,7 +194,7 @@ app.post("/Home", (req, res) => {
   const query =
     "SELECT * FROM administrativo WHERE Nombre = ? AND ClaveUnica = ? AND Contraseña = ?";
 
-  db.query(query, [nombre, claveUnica, contraseña], (err, results) => {
+  req.db.query(query, [nombre, claveUnica, contraseña], (err, results) => {
     if (err) {
       console.error("Error querying the database:", err);
       return res
@@ -209,7 +213,7 @@ app.post("/Home", (req, res) => {
 // Rutas específicas para obtener todos los empleados y clientes
 app.get("/api/empleados", (req, res) => {
   const sql = "SELECT * FROM empleado";
-  db.query(sql, (err, results) => {
+  req.db.query(sql, (err, results) => {
     if (err) {
       console.error("Error querying empleado table:", err);
       return res
@@ -222,7 +226,7 @@ app.get("/api/empleados", (req, res) => {
 
 app.get("/api/clientes", (req, res) => {
   const sql = "SELECT * FROM cliente";
-  db.query(sql, (err, results) => {
+  req.db.query(sql, (err, results) => {
     if (err) {
       console.error("Error querying cliente table:", err);
       return res
@@ -240,7 +244,7 @@ app.post("/api/mensaje", (req, res) => {
   const { id_cliente, mensaje, fecha, hora } = req.body;
 
   const sql = "CALL InsertarMensaje(?, ?, ?, ?)";
-  db.query(sql, [id_cliente, mensaje, fecha, hora], (err, result) => {
+  req.db.query(sql, [id_cliente, mensaje, fecha, hora], (err, result) => {
     if (err) {
       console.error("Error calling InsertarMensaje:", err);
       return res.status(500).send("Error inserting message: " + err.message);
@@ -252,7 +256,7 @@ app.post("/api/mensaje", (req, res) => {
 // Ruta para obtener todos los mensajes
 app.get("/api/mensajes", (req, res) => {
   const sql = "CALL ObtenerMensajes()";
-  db.query(sql, (err, results) => {
+  req.db.query(sql, (err, results) => {
     if (err) {
       console.error("Error calling ObtenerMensajes:", err);
       return res.status(500).send("Error retrieving messages: " + err.message);
@@ -265,7 +269,7 @@ app.get("/api/mensajes", (req, res) => {
 app.get("/api/mensajes/:id_cliente", (req, res) => {
   const { id_cliente } = req.params;
   const sql = "CALL ObtenerMensajesPorCliente(?)";
-  db.query(sql, [id_cliente], (err, results) => {
+  req.db.query(sql, [id_cliente], (err, results) => {
     if (err) {
       console.error("Error calling ObtenerMensajesPorCliente:", err);
       return res.status(500).send("Error retrieving messages: " + err.message);
@@ -275,5 +279,5 @@ app.get("/api/mensajes/:id_cliente", (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`API server listening at http://localhost:${port}`);
 });
