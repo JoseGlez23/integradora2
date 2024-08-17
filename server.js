@@ -1,283 +1,147 @@
 const express = require("express");
-const mysql = require("mysql2");
+const mysql = require("mysql");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 
 const app = express();
-const port = 3001;
+const port = 3000;
 
 app.use(cors());
 app.use(bodyParser.json());
 
-// Crear un pool de conexiones
-const pool = mysql.createPool({
-  connectionLimit: 10,
+const dbConfig = {
   host: "193.203.166.112",
-  user: "u475816193_droppingWater2",
-  password: "DroppingWater22$",
-  database: "u475816193_droppingWater2",
+  user: "u475816193_inventario",
+  password: "Inventario23@#1",
+  database: "u475816193_inventario",
+  connectTimeout: 10000,
+  acquireTimeout: 10000,
+  connectionLimit: 10,
+  queueLimit: 0,
+};
+
+const pool = mysql.createPool(dbConfig);
+
+pool.getConnection((err, connection) => {
+  if (err) {
+    console.error("Error connecting to the database:", err);
+    return;
+  }
+  if (connection) connection.release();
+  console.log("Connected to the database");
 });
 
-pool.on("error", (err) => {
-  console.error("Database error:", err);
-});
-
-// Middleware para añadir el pool a cada solicitud
 app.use((req, res, next) => {
   req.db = pool;
   next();
 });
 
-const requiredFieldsMap = {
-  cliente: [
-    "Nombre",
-    "Municipio",
-    "Direccion",
-    "Celular",
-    "Correo",
-    "Contraseña",
-    "Estado",
-  ],
-  empleado: [
-    "Nombre",
-    "CURP",
-    "RFC",
-    "Direccion",
-    "Fecha_nac",
-    "Contraseña",
-    "Estado",
-    "Telefono",
-  ],
-  administrativo: [
-    "Nombre",
-    "ClaveUnica",
-    "Contraseña",
-    "Fecha_nac",
-    "RFC",
-    "CURP",
-    "Direccion",
-    "Comentarios",
-    "Estado",
-  ],
-  tinaco: ["id_cliente", "Litros", "Nivel"],
-  mantenimiento: ["id_Tinaco", "Comentarios", "Realizado", "Fecha", "Hora"],
-  mensaje: ["id_cliente", "Mensaje", "Fecha", "Hora"],
-};
-
-function validateRequiredFields(entity, data) {
-  const requiredFields = requiredFieldsMap[entity];
-
-  if (!requiredFields) {
-    return "Entidad no válida";
+pool.on("error", function (err) {
+  console.error("Database error:", err);
+  if (err.code === "PROTOCOL_CONNECTION_LOST") {
+    handleDisconnect();
+  } else {
+    throw err;
   }
+});
 
-  for (const field of requiredFields) {
-    if (!(field in data)) {
-      return `${field} es obligatorio.`;
+function handleDisconnect() {
+  pool.getConnection((err, connection) => {
+    if (err) {
+      console.error("Error when connecting to db:", err);
+      setTimeout(handleDisconnect, 2000);
     }
-  }
-  return null;
+    if (connection) connection.release();
+    console.log("Reconnected to the database");
+  });
 }
 
-// CRUD básico para cada entidad
-Object.keys(requiredFieldsMap).forEach((entity) => {
-  // Create
-  app.post(`/api/${entity}`, (req, res) => {
-    const data = req.body;
-    const validationError = validateRequiredFields(entity, data);
-    if (validationError) {
-      return res.status(400).send(validationError);
-    }
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body;
 
-    const columns = Object.keys(data).join(", ");
-    const values = Object.values(data);
-    const placeholders = values.map(() => "?").join(", ");
-    const sql = `INSERT INTO ${entity} (${columns}) VALUES (${placeholders})`;
+  if (!username || !password) {
+    return res.status(400).send("Username y password son requeridos.");
+  }
 
-    req.db.query(sql, values, (err, result) => {
-      if (err) {
-        console.error(`Error inserting into ${entity}:`, err);
-        return res
-          .status(500)
-          .send(`Error inserting into ${entity}: ` + err.message);
-      }
-      res.status(201).send(result);
-    });
-  });
-
-  // Read all
-  app.get(`/api/${entity}`, (req, res) => {
-    const sql = `SELECT * FROM ${entity}`;
-    req.db.query(sql, (err, results) => {
-      if (err) {
-        console.error(`Error querying ${entity} table:`, err);
-        return res
-          .status(500)
-          .send(`Error querying ${entity} table: ` + err.message);
-      }
-      res.status(200).send(results);
-    });
-  });
-
-  // Read by id
-  app.get(`/api/${entity}/id/:id`, (req, res) => {
-    const { id } = req.params;
-    const sql = `SELECT * FROM ${entity} WHERE id = ?`;
-    req.db.query(sql, [id], (err, results) => {
-      if (err) {
-        console.error(`Error querying ${entity} by id ${id}:`, err);
-        return res
-          .status(500)
-          .send(`Error querying ${entity} by id ${id}: ` + err.message);
-      }
-      res.status(200).send(results);
-    });
-  });
-
-  // Update by id
-  app.put(`/api/${entity}/id/:id`, (req, res) => {
-    const { id } = req.params;
-    const data = req.body;
-
-    // Log the received request
-    console.log("Received PUT request:", { id, data });
-
-    // Validate the Estado field
-    if (
-      !data.Estado ||
-      (data.Estado !== "Activo" && data.Estado !== "Inactivo")
-    ) {
-      return res
-        .status(400)
-        .send(
-          'El campo "Estado" es obligatorio y debe ser "Activo" o "Inactivo".'
-        );
-    }
-
-    const columns = Object.keys(data)
-      .map((key) => `${key} = ?`)
-      .join(", ");
-    const values = Object.values(data);
-    values.push(id);
-    const sql = `UPDATE ${entity} SET ${columns} WHERE id = ?`;
-
-    req.db.query(sql, values, (err, result) => {
-      if (err) {
-        console.error(`Error updating ${entity} with id ${id}:`, err);
-        return res
-          .status(500)
-          .send(`Error updating ${entity} with id ${id}: ` + err.message);
-      }
-      res.status(200).send(result);
-    });
-  });
-
-  // Delete by id
-  app.delete(`/api/${entity}/id/:id`, (req, res) => {
-    const { id } = req.params;
-    const sql = `DELETE FROM ${entity} WHERE id = ?`;
-    req.db.query(sql, [id], (err, result) => {
-      if (err) {
-        console.error(`Error deleting ${entity} with id ${id}:`, err);
-        return res
-          .status(500)
-          .send(`Error deleting ${entity} with id ${id}: ` + err.message);
-      }
-      res.status(200).send(result);
-    });
-  });
-});
-
-// Ruta de inicio de sesión
-app.post("/Home", (req, res) => {
-  const { nombre, claveUnica, contraseña } = req.body;
-  const query =
-    "SELECT * FROM administrativo WHERE Nombre = ? AND ClaveUnica = ? AND Contraseña = ?";
-
-  req.db.query(query, [nombre, claveUnica, contraseña], (err, results) => {
+  const sql = "SELECT * FROM usuarios WHERE username = ? AND password = ?";
+  req.db.query(sql, [username, password], (err, results) => {
     if (err) {
-      console.error("Error querying the database:", err);
-      return res
-        .status(500)
-        .send("Error querying the database: " + err.message);
-    } else if (results.length > 0) {
-      const userData = results[0]; // Obtener datos del primer administrativo encontrado
-      console.log("User Data:", userData); // Agregar esto para verificar los datos
-      res.status(200).send(userData); // Devolver datos del administrativo
+      console.error("Error querying usuarios table:", err);
+      return res.status(500).send("Error en el servidor: " + err.message);
+    }
+
+    if (results.length > 0) {
+      res.status(200).send({ message: "Login exitoso", user: results[0] });
     } else {
-      res.status(401).send("Credenciales inválidas");
+      res.status(401).send("Credenciales incorrectas");
     }
   });
 });
 
-// Rutas específicas para obtener todos los empleados y clientes
-app.get("/api/empleados", (req, res) => {
-  const sql = "SELECT * FROM empleado";
+app.get("/api/computadoras", (req, res) => {
+  const sql = "SELECT * FROM computadoras";
   req.db.query(sql, (err, results) => {
     if (err) {
-      console.error("Error querying empleado table:", err);
+      console.error("Error querying computadoras table:", err);
       return res
         .status(500)
-        .send("Error querying empleado table: " + err.message);
+        .send("Error querying computadoras table: " + err.message);
     }
     res.status(200).send(results);
   });
 });
 
-app.get("/api/clientes", (req, res) => {
-  const sql = "SELECT * FROM cliente";
+app.get("/api/usuarios", (req, res) => {
+  const sql = "SELECT * FROM usuarios";
   req.db.query(sql, (err, results) => {
     if (err) {
-      console.error("Error querying cliente table:", err);
+      console.error("Error querying usuarios table:", err);
       return res
         .status(500)
-        .send("Error querying cliente table: " + err.message);
+        .send("Error querying usuarios table: " + err.message);
     }
     res.status(200).send(results);
   });
 });
 
-// Rutas para los procedimientos almacenados
+app.put("/api/computadoras/:id", (req, res) => {
+  const { id } = req.params;
+  const { stock } = req.body;
 
-// Ruta para insertar un mensaje
-app.post("/api/mensaje", (req, res) => {
-  const { id_cliente, mensaje, fecha, hora } = req.body;
-
-  const sql = "CALL InsertarMensaje(?, ?, ?, ?)";
-  req.db.query(sql, [id_cliente, mensaje, fecha, hora], (err, result) => {
+  const sql = "UPDATE computadoras SET stock = ? WHERE _id = ?";
+  req.db.query(sql, [stock, id], (err, result) => {
     if (err) {
-      console.error("Error calling InsertarMensaje:", err);
-      return res.status(500).send("Error inserting message: " + err.message);
+      console.error("Error updating computadoras stock:", err);
+      return res
+        .status(500)
+        .send("Error updating computadoras stock: " + err.message);
     }
-    res.status(201).send(result);
+    res.status(200).send(result);
   });
 });
 
-// Ruta para obtener todos los mensajes
-app.get("/api/mensajes", (req, res) => {
-  const sql = "CALL ObtenerMensajes()";
-  req.db.query(sql, (err, results) => {
-    if (err) {
-      console.error("Error calling ObtenerMensajes:", err);
-      return res.status(500).send("Error retrieving messages: " + err.message);
-    }
-    res.status(200).send(results[0]); // Results are nested inside an array
-  });
-});
+app.put("/api/computadoras/estado/:id", (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body;
 
-// Ruta para obtener mensajes por cliente
-app.get("/api/mensajes/:id_cliente", (req, res) => {
-  const { id_cliente } = req.params;
-  const sql = "CALL ObtenerMensajesPorCliente(?)";
-  req.db.query(sql, [id_cliente], (err, results) => {
+  if (estado !== "disponible" && estado !== "no disponible") {
+    return res
+      .status(400)
+      .send('El campo "estado" debe ser "disponible" o "no disponible".');
+  }
+
+  const sql = "UPDATE computadoras SET estado = ? WHERE _id = ?";
+  req.db.query(sql, [estado, id], (err, result) => {
     if (err) {
-      console.error("Error calling ObtenerMensajesPorCliente:", err);
-      return res.status(500).send("Error retrieving messages: " + err.message);
+      console.error("Error updating computadoras estado:", err);
+      return res
+        .status(500)
+        .send("Error updating computadoras estado: " + err.message);
     }
-    res.status(200).send(results[0]); // Results are nested inside an array
+    res.status(200).send(result);
   });
 });
 
 app.listen(port, () => {
-  console.log(`API server listening at http://localhost:${port}`);
+  console.log(`API listening at http://localhost:${port}`);
 });
