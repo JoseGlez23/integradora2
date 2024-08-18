@@ -10,10 +10,10 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const dbConfig = {
-  host: "127.0.0.1",
-  user: "root",
-  password: "",
-  database: "inventario",
+  host: "193.203.166.112",
+  user: "u475816193_inventario",
+  password: "Inventario23@#1",
+  database: "u475816193_inventario",
   connectTimeout: 10000,
   acquireTimeout: 10000,
   connectionLimit: 10,
