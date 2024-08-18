@@ -10,10 +10,10 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const dbConfig = {
-  host: "193.203.166.112",
-  user: "u475816193_inventario",
-  password: "Inventario23@#1",
-  database: "u475816193_inventario",
+  host: "127.0.0.1",
+  user: "root",
+  password: "",
+  database: "inventario",
   connectTimeout: 10000,
   acquireTimeout: 10000,
   connectionLimit: 10,
@@ -91,6 +91,62 @@ app.get("/api/computadoras", (req, res) => {
   });
 });
 
+app.get("/api/computadoras/:id", (req, res) => {
+  const { id } = req.params;
+  const sql = "SELECT * FROM computadoras WHERE _id = ?";
+  req.db.query(sql, [id], (err, results) => {
+    if (err) {
+      console.error("Error al obtener la computadora:", err);
+      return res
+        .status(500)
+        .send("Error al obtener la computadora: " + err.message);
+    }
+    if (results.length === 0) {
+      return res.status(404).send("Computadora no encontrada");
+    }
+    res.status(200).send(results[0]);
+  });
+});
+
+app.post("/api/computadoras", (req, res) => {
+  const { marca, modelo, numeroserie, estado, fecha, stock } = req.body;
+
+  if (
+    !marca ||
+    !modelo ||
+    !numeroserie ||
+    !estado ||
+    !fecha ||
+    stock === undefined
+  ) {
+    return res.status(400).send("Todos los campos son obligatorios.");
+  }
+
+  if (stock < 0) {
+    return res.status(400).send("El stock no puede ser negativo.");
+  }
+
+  const sql =
+    "INSERT INTO computadoras (marca, modelo, numeroserie, estado, fecha, stock) VALUES (?, ?, ?, ?, ?, ?)";
+
+  req.db.query(
+    sql,
+    [marca, modelo, numeroserie, estado, fecha, stock],
+    (err, result) => {
+      if (err) {
+        console.error("Error al agregar la computadora:", err);
+        return res
+          .status(500)
+          .send("Error al agregar la computadora: " + err.message);
+      }
+      res.status(201).send({
+        message: "Computadora agregada exitosamente",
+        id: result.insertId,
+      });
+    }
+  );
+});
+
 app.get("/api/usuarios", (req, res) => {
   const sql = "SELECT * FROM usuarios";
   req.db.query(sql, (err, results) => {
@@ -106,39 +162,40 @@ app.get("/api/usuarios", (req, res) => {
 
 app.put("/api/computadoras/:id", (req, res) => {
   const { id } = req.params;
-  const { stock } = req.body;
+  const { stock, marca, modelo, numeroserie, estado, fecha } = req.body;
 
-  const sql = "UPDATE computadoras SET stock = ? WHERE _id = ?";
-  req.db.query(sql, [stock, id], (err, result) => {
-    if (err) {
-      console.error("Error updating computadoras stock:", err);
-      return res
-        .status(500)
-        .send("Error updating computadoras stock: " + err.message);
-    }
-    res.status(200).send(result);
-  });
-});
-
-app.put("/api/computadoras/estado/:id", (req, res) => {
-  const { id } = req.params;
-  const { estado } = req.body;
-
-  if (estado !== "disponible" && estado !== "no disponible") {
-    return res
-      .status(400)
-      .send('El campo "estado" debe ser "disponible" o "no disponible".');
+  if (stock < 0) {
+    return res.status(400).send("El stock no puede ser negativo.");
   }
 
-  const sql = "UPDATE computadoras SET estado = ? WHERE _id = ?";
-  req.db.query(sql, [estado, id], (err, result) => {
+  const sql =
+    "UPDATE computadoras SET stock = ?, marca = ?, modelo = ?, numeroserie = ?, estado = ?, fecha = ? WHERE _id = ?";
+  req.db.query(
+    sql,
+    [stock, marca, modelo, numeroserie, estado, fecha, id],
+    (err, result) => {
+      if (err) {
+        console.error("Error updating computadoras:", err);
+        return res
+          .status(500)
+          .send("Error updating computadoras: " + err.message);
+      }
+      res.status(200).send(result);
+    }
+  );
+});
+
+app.delete("/api/computadoras/:id", (req, res) => {
+  const { id } = req.params;
+  const sql = "DELETE FROM computadoras WHERE _id = ?";
+  req.db.query(sql, [id], (err, result) => {
     if (err) {
-      console.error("Error updating computadoras estado:", err);
+      console.error("Error al eliminar la computadora:", err);
       return res
         .status(500)
-        .send("Error updating computadoras estado: " + err.message);
+        .send("Error al eliminar la computadora: " + err.message);
     }
-    res.status(200).send(result);
+    res.status(200).send({ message: "Computadora eliminada exitosamente" });
   });
 });
 
